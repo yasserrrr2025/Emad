@@ -4,7 +4,7 @@ import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import { doc, onSnapshot, setDoc, query, collection, where, getDocs, getDoc } from "firebase/firestore";
 import { auth, db } from "./lib/firebase";
 import { motion, AnimatePresence } from "motion/react";
-import { Trophy, LogIn, LayoutDashboard, Send, Clock, AlertCircle, ExternalLink, Users, CheckCircle, Trash2, Plus, Check, ChevronLeft, ChevronRight, X, Award, History, TrendingUp, Medal, Star } from "lucide-react";
+import { Trophy, LogIn, LayoutDashboard, Send, Clock, AlertCircle, ExternalLink, Users, CheckCircle, Trash2, Plus, Check, ChevronLeft, ChevronRight, X, Award, History, TrendingUp, Medal, Star, Camera } from "lucide-react";
 import confetti from "canvas-confetti";
 import { cn } from "./lib/utils";
 
@@ -29,6 +29,7 @@ interface CompetitionData {
   winnerName?: string;
   winnerGrade?: string;
   winnerSection?: string;
+  winnerPhotoUrl?: string; // New: Honoring Photo
   note?: string;
 }
 
@@ -47,6 +48,7 @@ interface PastWinner {
   winnerGrade: string;
   winnerSection: string;
   prizeImageUrl?: string;
+  winnerPhotoUrl?: string; // New: Honoring Photo
   date: string;
 }
 
@@ -276,6 +278,49 @@ function LoginPage({ onLogin }: { onLogin: (p: StudentProfile) => void }) {
 function StudentInterface({ student, isAdmin }: { student: StudentProfile, isAdmin?: boolean }) {
   const [activeTab, setActiveTab] = useState<"live" | "honor" | "hall">("live");
   const [competition, setCompetition] = useState<CompetitionData | null>(null);
+  const [qualifiedNames, setQualifiedNames] = useState<string[]>([]);
+  const [shuffleIndex, setShuffleIndex] = useState(0);
+
+  useEffect(() => {
+    if (competition?.status === 'drawing') {
+      const q = query(
+        collection(db, `competitions/${competition.id}/answers`),
+        where("isCorrect", "==", true)
+      );
+      getDocs(q).then(snap => {
+        let names = snap.docs.map(d => d.data().studentName);
+        if (names.length === 0) {
+           // Fallback if no correct answers
+           getDocs(collection(db, `competitions/${competition.id}/answers`)).then(s => {
+             setQualifiedNames(s.docs.map(d => d.data().studentName));
+           });
+        } else {
+          setQualifiedNames(names);
+        }
+      });
+    }
+  }, [competition?.status, competition?.id]);
+
+  useEffect(() => {
+    let interval: any;
+    if (competition?.status === 'drawing' && qualifiedNames.length > 0) {
+      interval = setInterval(() => {
+        setShuffleIndex(prev => (prev + 1) % qualifiedNames.length);
+      }, 100);
+    }
+    return () => clearInterval(interval);
+  }, [competition?.status, qualifiedNames]);
+  useEffect(() => {
+    if (competition?.status === 'finished') {
+      confetti({
+        particleCount: 150,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ["#00f3ff", "#bc13fe", "#ffd700"]
+      });
+    }
+  }, [competition?.status]);
+
   const [answer, setAnswer] = useState("");
   const [multiAnswers, setMultiAnswers] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState(false);
@@ -351,6 +396,7 @@ function StudentInterface({ student, isAdmin }: { student: StudentProfile, isAdm
           winnerGrade: data.winnerGrade,
           winnerSection: data.winnerSection,
           prizeImageUrl: data.prizeImageUrl,
+          winnerPhotoUrl: data.winnerPhotoUrl, // Fetch photo URL
           date: data.endTime || data.createdAt
         } as PastWinner;
       });
@@ -752,26 +798,42 @@ function StudentInterface({ student, isAdmin }: { student: StudentProfile, isAdm
             {competition.status === "drawing" && (
               <motion.div
                 key="drawing"
-                className="flex-grow flex flex-col items-center justify-center p-10 bg-dark-surface rounded-[40px] border border-neon-purple/20 shadow-2xl"
+                className="flex-grow flex flex-col items-center justify-center p-10 bg-dark-bg/60 backdrop-blur-3xl rounded-[40px] border border-neon-purple/20 shadow-2xl overflow-hidden relative"
               >
+                <div className="absolute inset-0 bg-gradient-to-b from-neon-purple/5 to-transparent pointer-events-none" />
+                
                 <motion.div
                   animate={{ rotate: 360 }}
-                  transition={{ repeat: Infinity, duration: 4, ease: "linear" }}
-                  className="w-24 h-24 border-4 border-neon-purple border-t-transparent rounded-full mb-8 shadow-[0_0_20px_rgba(188,19,254,0.3)]"
+                  transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+                  className="w-24 h-24 border-4 border-neon-purple border-t-transparent rounded-full mb-8 shadow-[0_0_30px_rgba(188,19,254,0.4)]"
                 />
-                <h2 className="text-4xl font-bold neon-glow-purple mb-4">جاري تدوير القرص...</h2>
-                <div className="w-full max-w-xl h-24 overflow-hidden relative bg-black/50 rounded-2xl border border-white/10 flex items-center">
-                  <div className="absolute inset-0 z-10 pointer-events-none bg-gradient-to-r from-dark-surface via-transparent to-dark-surface" />
-                  <div className="absolute left-1/2 top-0 bottom-0 w-1 bg-neon-cyan z-20 shadow-[0_0_20px_var(--neon-cyan)]" />
-                  <motion.div
-                    animate={{ x: [-2000, 0] }}
-                    transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-                    className="whitespace-nowrap flex gap-12 text-3xl font-bold opacity-30"
-                  >
-                    {Array(20).fill(0).map((_, i) => (
-                      <span key={i} className="text-neon-cyan">؟ ؟ ؟ ؟</span>
-                    ))}
-                  </motion.div>
+                
+                <h2 className="text-4xl md:text-5xl font-black text-white mb-2 text-center">ترقّبوا بطل المسابقة!</h2>
+                <p className="text-neon-purple font-bold tracking-[3px] uppercase text-xs mb-12">لحظات تفصلنا عن السحب العشوائي</p>
+                
+                <div className="w-full max-w-2xl h-32 md:h-40 bg-black/80 rounded-[40px] border-2 border-white/10 flex items-center justify-center relative overflow-hidden group">
+                  <div className="absolute inset-y-0 left-0 w-24 md:w-40 bg-gradient-to-r from-black via-transparent to-transparent z-10" />
+                  <div className="absolute inset-y-0 right-0 w-24 md:w-40 bg-gradient-to-l from-black via-transparent to-transparent z-10" />
+                  <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black to-transparent z-10" />
+                  <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black to-transparent z-10" />
+                  <div className="absolute left-1/2 top-0 bottom-0 w-1 bg-neon-cyan z-20 shadow-[0_0_30px_var(--neon-cyan)]" />
+
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={shuffleIndex}
+                      initial={{ y: 20, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      exit={{ y: -20, opacity: 0 }}
+                      className="text-3xl md:text-6xl font-black text-white px-10 text-center break-words"
+                    >
+                      {qualifiedNames.length > 0 ? qualifiedNames[shuffleIndex] : "؟؟؟؟؟؟"}
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
+
+                <div className="mt-12 flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-neon-purple animate-ping" />
+                  <span className="text-white/40 font-bold uppercase tracking-widest text-[10px]">جاري تدوير القرص الآن</span>
                 </div>
               </motion.div>
             )}
@@ -888,24 +950,38 @@ function StudentInterface({ student, isAdmin }: { student: StudentProfile, isAdm
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pb-10">
                {pastWinners.length > 0 ? pastWinners.map((w, idx) => (
-                 <div key={idx} className="bg-dark-surface p-8 rounded-[40px] border border-white/5 flex flex-row-reverse gap-8 items-center bg-gradient-to-br from-white/[0.02] to-transparent">
-                    {w.prizeImageUrl ? (
-                      <img src={w.prizeImageUrl} alt="Prize" className="w-24 h-24 rounded-3xl object-cover border-2 border-accent-gold" referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="w-24 h-24 rounded-3xl bg-white/5 flex items-center justify-center">
-                        <Award className="w-10 h-10 text-accent-gold" />
-                      </div>
-                    )}
-                    <div className="flex-grow text-right">
-                       <div className="text-accent-gold text-xs font-bold uppercase mb-2 tracking-widest">{w.compTitle}</div>
-                       <h3 className="text-3xl font-black mb-3">{w.winnerName}</h3>
+                 <motion.div 
+                   key={idx}
+                   whileHover={{ y: -5 }}
+                   className="bg-dark-surface rounded-[40px] border border-white/5 overflow-hidden flex flex-col group shadow-2xl"
+                 >
+                    <div className="relative h-64 w-full overflow-hidden">
+                       <img 
+                         src={w.winnerPhotoUrl || w.prizeImageUrl || "https://picsum.photos/seed/winner/800/600"} 
+                         alt="Honoring" 
+                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                         referrerPolicy="no-referrer"
+                       />
+                       <div className="absolute inset-0 bg-gradient-to-t from-dark-surface via-transparent to-transparent" />
+                       <div className="absolute bottom-6 right-6">
+                         <div className="bg-accent-gold text-black px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg">
+                           {w.compTitle}
+                         </div>
+                       </div>
+                    </div>
+                    
+                    <div className="p-8 text-right">
+                       <h3 className="text-3xl font-black mb-2 text-white">{w.winnerName}</h3>
                        <div className="flex flex-row-reverse items-center justify-end gap-3 text-white/40 text-sm">
+                          <Trophy className="w-4 h-4 text-accent-gold" />
+                          <span>بطل المسابقة</span>
+                          <span>•</span>
                           <span>{w.winnerGrade}</span>
                           <span>•</span>
                           <span>فصل: {w.winnerSection}</span>
                        </div>
                     </div>
-                 </div>
+                 </motion.div>
                )) : (
                  <div className="col-span-full py-20 text-center text-white/20 italic">
                    يتم تجميع أسماء الأبطال حالياً...
@@ -970,12 +1046,148 @@ function StudentInterface({ student, isAdmin }: { student: StudentProfile, isAdm
   );
 }
 
+function WinnerDrawingZone({ answers, onFinish, onCancel }: { answers: any[], onFinish: (winner: any, fallback: boolean) => void, onCancel: () => void }) {
+  const [drawing, setDrawing] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [candidates, setCandidates] = useState<any[]>([]);
+  const [isFallback, setIsFallback] = useState(false);
+
+  useEffect(() => {
+    let qualified = answers.filter(a => a.isCorrect);
+    if (qualified.length === 0) {
+      qualified = answers;
+      setIsFallback(true);
+    }
+    setCandidates(qualified);
+  }, [answers]);
+
+  useEffect(() => {
+    let interval: any;
+    if (drawing && candidates.length > 0) {
+      interval = setInterval(() => {
+        setCurrentIndex(prev => (prev + 1) % candidates.length);
+      }, 100);
+    }
+    return () => clearInterval(interval);
+  }, [drawing, candidates]);
+
+  const startSelecting = () => {
+    if (candidates.length === 0) {
+      alert("لا يوجد متسابقون");
+      return;
+    }
+    setDrawing(true);
+    setTimeout(() => {
+      setDrawing(false);
+      const winIdx = Math.floor(Math.random() * candidates.length);
+      setCurrentIndex(winIdx);
+      onFinish(candidates[winIdx], isFallback);
+    }, 15000); // 15 seconds as requested
+  };
+
+  return (
+    <div className="p-8 text-center space-y-6">
+      <div className="flex flex-col items-center gap-2">
+        <div className="bg-neon-purple/20 text-neon-purple px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-neon-purple/20">
+          مرحلة السحب التفاعلي
+        </div>
+        <h3 className="text-xl font-bold">تحديد بطل المسابقة</h3>
+      </div>
+
+      <div className="h-40 bg-black/40 rounded-3xl border border-white/10 flex items-center justify-center relative overflow-hidden group">
+        <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-black/60 to-transparent z-10" />
+        <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-black/60 to-transparent z-10" />
+        
+        {candidates.length > 0 ? (
+          <motion.div 
+            key={currentIndex}
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="text-3xl md:text-5xl font-black text-white px-6 break-words"
+          >
+            {candidates[currentIndex]?.studentName}
+          </motion.div>
+        ) : (
+          <div className="text-white/20 italic">في انتظار مشاركات صحيحة...</div>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <button
+          onClick={startSelecting}
+          disabled={drawing || candidates.length === 0}
+          className="w-full py-5 bg-neon-cyan text-dark-bg font-black rounded-2xl hover:scale-[1.02] transition-all shadow-[0_0_30px_rgba(0,243,255,0.3)] disabled:opacity-50 flex items-center justify-center gap-3"
+        >
+          {drawing ? <Clock className="animate-spin" /> : <Trophy />}
+          <span>{drawing ? "جاري البحث عن الفائز..." : "بدء السحب العشوائي"}</span>
+        </button>
+        
+        {!drawing && (
+          <button
+            onClick={onCancel}
+            className="text-white/20 hover:text-white/40 text-xs font-bold transition-all"
+          >
+            إلغاء السحب والعودة
+          </button>
+        )}
+      </div>
+
+      <div className="pt-4 border-t border-white/5">
+        <div className="flex justify-between items-center flex-row-reverse text-[10px] text-white/40">
+          <span>عدد المؤهلين: {candidates.length}</span>
+          {isFallback && <span className="text-orange-500">سحب احتياطي (الكل)</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminView({ userProfile }: { userProfile?: StudentProfile }) {
   const [competition, setCompetition] = useState<CompetitionData | null>(null);
+  const [finishedCompetitions, setFinishedCompetitions] = useState<CompetitionData[]>([]);
   const [stats, setStats] = useState({ totalAnswers: 0, correctAnswers: 0 });
   const [loading, setLoading] = useState(false);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [copying, setCopying] = useState(false);
+
+  useEffect(() => {
+    const unsub = onSnapshot(query(collection(db, "competitions"), where("status", "==", "finished")), (snap) => {
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as CompetitionData));
+      setFinishedCompetitions(docs.sort((a, b) => new Date(b.endTime || 0).getTime() - new Date(a.endTime || 0).getTime()));
+    });
+    return () => unsub();
+  }, []);
+
+  const handleHonorPhotoUpload = async (compId: string, file: File) => {
+    if (!file) return;
+    setLoading(true);
+    try {
+      // Create a canvas to resize image (keep it under Firestore 1MB limit)
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const img = new Image();
+        img.onload = async () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 800;
+          const scale = MAX_WIDTH / img.width;
+          canvas.width = MAX_WIDTH;
+          canvas.height = img.height * scale;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+          
+          const base64 = canvas.toDataURL('image/jpeg', 0.7);
+          await setDoc(doc(db, "competitions", compId), { winnerPhotoUrl: base64 }, { merge: true });
+          alert("تم رفع صورة التكريم بنجاح!");
+          setLoading(false);
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error(err);
+      setLoading(false);
+    }
+  };
   
   useEffect(() => {
     const saved = localStorage.getItem("eduwin_student");
@@ -1135,53 +1347,33 @@ function AdminView({ userProfile }: { userProfile?: StudentProfile }) {
     }
   };
 
-  const handleDrawWinner = async () => {
+  const handleStartDraw = async () => {
     if (!competition) return;
-    if (confirm("هل أنت متأكد من بدء السحب وإغلاق المسابقة؟")) {
-      setLoading(true);
-      try {
-        await setDoc(doc(db, "competitions", competition.id), { status: "drawing" }, { merge: true });
-        await new Promise(r => setTimeout(r, 5000));
-        
-        const q = query(collection(db, `competitions/${competition.id}/answers`), where("isCorrect", "==", true));
-        let snap = await getDocs(q);
-        
-        let isFallback = false;
-        if (snap.empty) {
-          const qAll = collection(db, `competitions/${competition.id}/answers`);
-          snap = await getDocs(qAll);
-          isFallback = true;
-        }
+    if (confirm("هل أنت متأكد من بدء السحب وإغلاق المشاركة؟")) {
+      await setDoc(doc(db, "competitions", competition.id), { status: "drawing" }, { merge: true });
+    }
+  };
 
-        if (snap.empty) {
-          alert("لا يوجد مشاركون للسحب الأدنى من بينهم!");
-          await setDoc(doc(db, "competitions", competition.id), { status: "active" }, { merge: true });
-          return;
-        }
+  const finalizeWinner = async (winner: any, isFallback: boolean) => {
+    if (!competition) return;
+    try {
+      await setDoc(doc(db, "competitions", competition.id), {
+        status: "finished",
+        winnerId: winner.studentId,
+        winnerName: winner.studentName,
+        winnerGrade: winner.grade,
+        winnerSection: winner.section,
+        note: isFallback ? "تم السحب من جميع المشاركين لعدم وجود إجابة صحيحة" : ""
+      }, { merge: true });
 
-        const randomIdx = Math.floor(Math.random() * snap.docs.length);
-        const winner = snap.docs[randomIdx].data();
-        
-        await setDoc(doc(db, "competitions", competition.id), {
-          status: "finished",
-          winnerId: winner.studentId,
-          winnerName: winner.studentName,
-          winnerGrade: winner.grade,
-          winnerSection: winner.section,
-          note: isFallback ? "تم السحب من جميع المشاركين لعدم وجود إجابة صحيحة" : ""
-        }, { merge: true });
-
-        confetti({
-          particleCount: 200,
-          spread: 120,
-          origin: { y: 0.6 },
-          colors: ["#00f3ff", "#bc13fe", "#ffd700"]
-        });
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
+      confetti({
+        particleCount: 200,
+        spread: 120,
+        origin: { y: 0.6 },
+        colors: ["#00f3ff", "#bc13fe", "#ffd700"]
+      });
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -1468,6 +1660,67 @@ function AdminView({ userProfile }: { userProfile?: StudentProfile }) {
               </button>
             </div>
           </section>
+
+          {/* Winner Photos Management */}
+          <section className="bg-dark-surface p-10 rounded-[40px] border border-white/5 shadow-2xl space-y-8 mt-10">
+            <div className="flex flex-row-reverse justify-between items-center">
+               <div className="flex flex-row-reverse items-center gap-4">
+                  <div className="p-4 bg-accent-gold/10 rounded-2xl border border-accent-gold/20">
+                    <Camera className="w-6 h-6 text-accent-gold" />
+                  </div>
+                  <div className="text-right">
+                    <h2 className="text-2xl font-black text-white">إدارة صور التكريم</h2>
+                    <p className="text-white/40 text-sm">أضف صور تكريم الفائزين للمشاركة في لوحة الشرف</p>
+                  </div>
+               </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {finishedCompetitions.length > 0 ? finishedCompetitions.map(comp => (
+                <div key={comp.id} className="p-6 bg-white/5 rounded-3xl border border-white/5 flex flex-col gap-4">
+                   <div className="flex justify-between items-start flex-row-reverse">
+                      <div className="text-right">
+                        <div className="text-[10px] text-accent-gold font-bold uppercase tracking-widest">{comp.title}</div>
+                        <div className="text-lg font-black text-white">{comp.winnerName}</div>
+                      </div>
+                      <div className="text-[10px] text-white/20">{new Date(comp.endTime || "").toLocaleDateString('ar-SA')}</div>
+                   </div>
+
+                   {comp.winnerPhotoUrl ? (
+                     <div className="relative group rounded-2xl overflow-hidden aspect-video border border-white/10">
+                        <img src={comp.winnerPhotoUrl} alt="Honoring" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
+                           <label className="cursor-pointer bg-white text-black px-4 py-2 rounded-lg font-bold text-xs shadow-xl">
+                             تغيير الصورة
+                             <input 
+                               type="file" 
+                               accept="image/*" 
+                               capture="environment" 
+                               className="hidden" 
+                               onChange={(e) => e.target.files && handleHonorPhotoUpload(comp.id, e.target.files[0])}
+                             />
+                           </label>
+                        </div>
+                     </div>
+                   ) : (
+                     <label className="cursor-pointer w-full aspect-video border-2 border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center gap-2 hover:border-accent-gold/40 hover:bg-accent-gold/5 transition-all text-white/20 group">
+                        <Camera className="w-8 h-8 group-hover:text-accent-gold transition-colors" />
+                        <span className="text-xs font-bold">اضغط لالتقاط أو رفع صورة التكريم</span>
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          capture="environment" 
+                          className="hidden" 
+                          onChange={(e) => e.target.files && handleHonorPhotoUpload(comp.id, e.target.files[0])}
+                        />
+                     </label>
+                   )}
+                </div>
+              )) : (
+                <div className="col-span-full py-10 text-center text-white/20 italic">لا توجد مسابقات منتهية بعد</div>
+              )}
+            </div>
+          </section>
         </div>
 
         {/* Right Column: Active Comp & Answers */}
@@ -1478,33 +1731,44 @@ function AdminView({ userProfile }: { userProfile?: StudentProfile }) {
             <div className="bg-dark-surface rounded-[32px] border border-white/10 shadow-xl overflow-hidden">
                <div className="p-6 bg-gradient-to-br from-neon-purple/20 to-transparent border-b border-white/5 flex flex-row-reverse justify-between items-center">
                   <h3 className="font-black text-neon-purple uppercase tracking-widest text-sm">المسابقة الحالية</h3>
-                  <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_10px_var(--green-500)]" />
+                  <div className={cn("w-2 h-2 rounded-full", competition.status === 'active' ? "bg-green-500 shadow-[0_0_10px_var(--green-500)]" : "bg-orange-500")} />
                </div>
-               <div className="p-8 text-right space-y-6">
-                  <div>
-                    <h4 className="text-xl font-bold mb-2">{competition.title}</h4>
-                    <p className="text-white/40 text-sm line-clamp-2">{competition.question}</p>
-                  </div>
+               
+               {competition.status === 'drawing' ? (
+                 <WinnerDrawingZone 
+                   answers={answers} 
+                   onFinish={(winner, fallback) => finalizeWinner(winner, fallback)} 
+                   onCancel={async () => {
+                     await setDoc(doc(db, "competitions", competition.id), { status: "active" }, { merge: true });
+                   }}
+                 />
+               ) : (
+                 <div className="p-8 text-right space-y-6">
+                    <div>
+                      <h4 className="text-xl font-bold mb-2">{competition.title}</h4>
+                      <p className="text-white/40 text-sm line-clamp-2">{competition.question}</p>
+                    </div>
 
-                  <div className="flex flex-col gap-3">
-                    <button
-                      onClick={handleDrawWinner}
-                      disabled={loading || competition.status !== "active"}
-                      className="w-full py-5 bg-neon-purple text-white font-black rounded-2xl hover:opacity-90 shadow-lg disabled:opacity-30 disabled:grayscale transition-all flex items-center justify-center gap-3"
-                    >
-                      <Trophy className="w-6 h-6" />
-                      <span>بدء السحب العشوائي</span>
-                    </button>
-                    
-                    {competition.status === "finished" && (
-                       <div className="bg-green-500/10 border border-green-500/30 p-4 rounded-xl text-center">
-                          <div className="text-xs text-green-500/60 font-bold mb-1 uppercase">آخر فائز</div>
-                          <div className="text-xl font-black text-green-500">{competition.winnerName}</div>
-                          <div className="text-[10px] text-white/40">{competition.winnerGrade} - {competition.winnerSection}</div>
-                       </div>
-                    )}
-                  </div>
-               </div>
+                    <div className="flex flex-col gap-3">
+                      <button
+                        onClick={handleStartDraw}
+                        disabled={loading || competition.status !== "active"}
+                        className="w-full py-5 bg-neon-purple text-white font-black rounded-2xl hover:opacity-90 shadow-lg disabled:opacity-30 disabled:grayscale transition-all flex items-center justify-center gap-3"
+                      >
+                        <Trophy className="w-6 h-6" />
+                        <span>بدء مرحلة السحب</span>
+                      </button>
+                      
+                      {competition.status === "finished" && (
+                         <div className="bg-green-500/10 border border-green-500/30 p-4 rounded-xl text-center">
+                            <div className="text-xs text-green-500/60 font-bold mb-1 uppercase">الفائز الأخير</div>
+                            <div className="text-xl font-black text-green-500">{competition.winnerName}</div>
+                            <div className="text-[10px] text-white/40">{competition.winnerGrade} - {competition.winnerSection}</div>
+                         </div>
+                      )}
+                    </div>
+                 </div>
+               )}
             </div>
           ) : (
             <div className="bg-white/5 order-dashed border-2 border-white/10 p-10 rounded-[32px] text-center italic text-white/20">
