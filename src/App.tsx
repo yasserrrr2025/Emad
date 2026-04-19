@@ -513,8 +513,25 @@ function StudentInterface({ student }: { student: StudentProfile }) {
         )}
 
         <div className="flex flex-row-reverse items-center gap-5">
-          <span className="text-sm opacity-80">الحالة: متصل</span>
-          <span className="bg-green-500/20 text-green-500 text-[11px] font-bold px-3 py-1 rounded">بث مباشر</span>
+          <div className="flex flex-col items-end">
+            <span className="text-[10px] text-white/40 uppercase tracking-wider">الحالة</span>
+            <span className="text-green-500 text-xs font-bold flex items-center gap-1 flex-row-reverse">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              متصل الآن
+            </span>
+          </div>
+          
+          <button 
+            onClick={() => {
+              auth.signOut();
+              localStorage.removeItem("eduwin_student");
+              window.location.reload();
+            }}
+            className="p-2 rounded-xl bg-white/5 text-white/40 hover:text-red-500 hover:bg-red-500/10 transition-all border border-white/5"
+            title="تسجيل الخروج"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
       </header>
 
@@ -957,24 +974,31 @@ function AdminView() {
   const [copying, setCopying] = useState(false);
   
   useEffect(() => {
+    const saved = localStorage.getItem("eduwin_student");
+    let manualId = "";
+    if (saved) {
+      const p = JSON.parse(saved);
+      manualId = p.uid;
+    }
+
+    const checkAdmin = async (uid: string) => {
+      if (!uid) return false;
+      const adminDoc = await getDoc(doc(db, "admins", uid));
+      return adminDoc.exists();
+    };
+
     const unsub = onAuthStateChanged(auth, async (user) => {
+      let isAdm = false;
       if (user) {
-        const adminDoc = await getDoc(doc(db, "admins", user.uid));
-        // Fallback for manual IDs (std_...) if auth is not stable
-        const saved = localStorage.getItem("eduwin_student");
-        let manualId = "";
-        if (saved) manualId = JSON.parse(saved).uid;
-
-        const manualAdminDoc = manualId ? await getDoc(doc(db, "admins", manualId)) : null;
-
-        if (adminDoc.exists() || (manualAdminDoc && manualAdminDoc.exists())) {
-          setIsAdmin(true);
-        } else {
-          setIsAdmin(false);
-        }
-      } else {
-        setIsAdmin(false);
+        isAdm = await checkAdmin(user.uid);
       }
+      
+      // If auth check failed, check manual/local ID
+      if (!isAdm && manualId) {
+        isAdm = await checkAdmin(manualId);
+      }
+      
+      setIsAdmin(isAdm);
     });
     return () => unsub();
   }, []);
@@ -1545,19 +1569,30 @@ export default function App() {
 
   useEffect(() => {
     const saved = localStorage.getItem("eduwin_student");
+    let manualId = "";
     if (saved) {
       const p = JSON.parse(saved);
       setStudent(p);
-      // Check if this student is an admin
-      getDoc(doc(db, "admins", p.uid)).then(docSnap => {
-        if (docSnap.exists()) setIsAdmin(true);
-      });
+      manualId = p.uid;
     }
+
+    const checkAdmin = async (uid: string) => {
+      if (!uid) return false;
+      const adminDoc = await getDoc(doc(db, "admins", uid));
+      return adminDoc.exists();
+    };
+
     const unsub = onAuthStateChanged(auth, async (user) => {
+      let isAdm = false;
       if (user) {
-        const adminDoc = await getDoc(doc(db, "admins", user.uid));
-        if (adminDoc.exists()) setIsAdmin(true);
+        isAdm = await checkAdmin(user.uid);
       }
+      
+      if (!isAdm && manualId) {
+        isAdm = await checkAdmin(manualId);
+      }
+      
+      setIsAdmin(isAdm);
       setLoading(false);
     });
     return () => unsub();
