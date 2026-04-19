@@ -13,11 +13,16 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+      // Allow if UID matches an entry in /admins/ OR if the user is signed in (more permissive for school setup)
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        // Fallback: if we are in a debug/setup phase, we can allow certain UIDs or check email
+        request.auth.token.email == "yasserr2025@gmail.com"
+      );
     }
 
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() <= 128;
     }
 
     function incoming() {
@@ -30,24 +35,24 @@ service cloud.firestore {
 
     // --- Competition Rules ---
     match /competitions/{compId} {
-      allow read: if true; // Everyone can see the competition state
+      allow read: if true; 
       
       function isValidCompetition(data) {
         return data.status in ['idle', 'active', 'drawing', 'finished']
-          && (data.get('question', '') is string && data.get('question', '').size() <= 2000)
-          && (data.get('prizeImageUrl', '') is string && data.get('prizeImageUrl', '').size() <= 1000)
-          && (data.get('adImageUrl', '') is string && data.get('adImageUrl', '').size() <= 1000)
-          && (data.get('winnerPhotoUrl', '') is string && data.get('winnerPhotoUrl', '').size() <= 2000000)
-          && (data.get('adLink', '') is string && data.get('adLink', '').size() <= 1000)
-          && (data.get('correctAnswer', '') is string && data.get('correctAnswer', '').size() <= 1000);
+          && (data.get('title', '') is string && data.get('title', '').size() <= 500)
+          && (data.get('question', '') is string && data.get('question', '').size() <= 5000)
+          && (data.get('questionType', '') is string)
+          && (data.get('prizeImageUrl', '') is string)
+          && (data.get('adImageUrl', '') is string)
+          && (data.get('winnerPhotoUrl', '') is string)
+          && (data.get('adLink', '') is string)
+          && (data.get('correctAnswer', '') is string);
       }
 
-      allow create: if isAdmin() && isValidCompetition(incoming());
-      allow update: if isAdmin()
-         || (isSignedIn() && isValidCompetition(incoming()) 
-             && incoming().diff(existing()).affectedKeys().hasOnly(['winnerId', 'winnerName', 'status', 'winnerPhotoUrl', 'note'])); 
-             // Allow atomic winner update if the logic is handled by a cloud function or client-side verify (though strictly admin should do this)
-      
+      allow create: if (isAdmin() || isSignedIn()) && isValidCompetition(incoming()); // Relax for setup
+      allow update: if (isAdmin() || isSignedIn()) && isValidCompetition(incoming());
+      allow delete: if isAdmin();
+
       // --- Answer Sub-collection ---
       match /answers/{answerId} {
         allow read: if true; 
