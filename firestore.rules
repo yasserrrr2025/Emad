@@ -35,22 +35,23 @@ service cloud.firestore {
       function isValidCompetition(data) {
         return data.status in ['idle', 'active', 'drawing', 'finished']
           && (data.get('question', '') is string && data.get('question', '').size() <= 2000)
-          && (data.get('prizeImageUrl', '') is string && data.get('prizeImageUrl', '').size() <= 500)
-          && (data.get('adImageUrl', '') is string && data.get('adImageUrl', '').size() <= 500)
-          && (data.get('adLink', '') is string && data.get('adLink', '').size() <= 500)
-          && (data.get('correctAnswer', '') is string && data.get('correctAnswer', '').size() <= 500);
+          && (data.get('prizeImageUrl', '') is string && data.get('prizeImageUrl', '').size() <= 1000)
+          && (data.get('adImageUrl', '') is string && data.get('adImageUrl', '').size() <= 1000)
+          && (data.get('winnerPhotoUrl', '') is string && data.get('winnerPhotoUrl', '').size() <= 2000000)
+          && (data.get('adLink', '') is string && data.get('adLink', '').size() <= 1000)
+          && (data.get('correctAnswer', '') is string && data.get('correctAnswer', '').size() <= 1000);
       }
 
       allow create: if isAdmin() && isValidCompetition(incoming());
-      allow update: if (isAdmin() && isValidCompetition(incoming()))
+      allow update: if isAdmin()
          || (isSignedIn() && isValidCompetition(incoming()) 
-             && incoming().diff(existing()).affectedKeys().hasOnly(['winnerId', 'winnerName', 'status'])); 
+             && incoming().diff(existing()).affectedKeys().hasOnly(['winnerId', 'winnerName', 'status', 'winnerPhotoUrl', 'note'])); 
              // Allow atomic winner update if the logic is handled by a cloud function or client-side verify (though strictly admin should do this)
       
       // --- Answer Sub-collection ---
       match /answers/{answerId} {
-        allow read: if true; // Resilience: Students can check their submission status
-        allow list: if isAdmin();
+        allow read: if true; 
+        allow list: if true; 
 
         function isValidAnswer(data) {
           return (isSignedIn() ? data.studentId == request.auth.uid : (data.studentId is string && data.studentId.size() > 0))
@@ -70,7 +71,8 @@ service cloud.firestore {
 
     // --- Student Rules ---
     match /students/{studentId} {
-      allow read: if true; // Allowed to check if nationalId exists during login/reg
+      allow read: if true; 
+      allow list: if true; 
       
       function isValidStudent(data) {
         return data.nationalId is string && data.nationalId.size() <= 20
