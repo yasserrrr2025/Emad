@@ -1574,57 +1574,82 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
+    // Suppress Vite HMR WebSocket errors which are expected in this environment
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      if (event.reason && (
+          event.reason.message?.includes("WebSocket") || 
+          event.reason.message?.includes("vite")
+      )) {
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("unhandledrejection", handleRejection);
+
     const saved = localStorage.getItem("eduwin_student");
-    let manualId = "";
     if (saved) {
-      const p = JSON.parse(saved);
-      setStudent(p);
-      manualId = p.uid;
+      try {
+        const p = JSON.parse(saved);
+        setStudent(p);
+      } catch (e) {
+        console.error("Failed to parse saved student", e);
+      }
     }
 
-    const checkAdmin = async (uid: string) => {
+    const checkAdminStatus = async (uid: string) => {
       if (!uid) return false;
-      const adminDoc = await getDoc(doc(db, "admins", uid));
-      return adminDoc.exists();
+      try {
+        const adminDoc = await getDoc(doc(db, "admins", uid));
+        return adminDoc.exists();
+      } catch (e) {
+        console.error("Error checking admin status", e);
+        return false;
+      }
+    };
+
+    const updateAdminStatus = async (uid?: string) => {
+      const isAdm = await checkAdminStatus(uid || "");
+      setIsAdmin(isAdm);
+      setLoading(false);
     };
 
     const unsub = onAuthStateChanged(auth, async (user) => {
-      let isAdm = false;
-      try {
-        if (user) {
-          isAdm = await checkAdmin(user.uid);
-          // Sync student data if auth user exists but no local student
-          if (!student) {
-            const sDoc = await getDoc(doc(db, "students", user.uid));
-            if (sDoc.exists()) {
-              const sData = sDoc.data() as StudentProfile;
-              setStudent(sData);
-              localStorage.setItem("eduwin_student", JSON.stringify(sData));
-            }
+      if (user) {
+        // Check admin by Firebase UID
+        const isAdm = await checkAdminStatus(user.uid);
+        setIsAdmin(isAdm);
+
+        // Sync student data if missing
+        if (!student) {
+          const sDoc = await getDoc(doc(db, "students", user.uid));
+          if (sDoc.exists()) {
+            const sData = sDoc.data() as StudentProfile;
+            setStudent(sData);
+            localStorage.setItem("eduwin_student", JSON.stringify(sData));
           }
         }
-        
-        if (!isAdm && manualId) {
-          isAdm = await checkAdmin(manualId);
+      } else {
+        // Fallback to manual student UID if no Firebase user
+        const saved = localStorage.getItem("eduwin_student");
+        if (saved) {
+          const p = JSON.parse(saved);
+          const isAdm = await checkAdminStatus(p.uid);
+          setIsAdmin(isAdm);
+        } else {
+          setIsAdmin(false);
         }
-      } catch (err) {
-        console.warn("Auth check error, proceeding as student:", err);
       }
-      
-      setIsAdmin(isAdm);
       setLoading(false);
     });
 
-    // صمام أمان: إذا تأخر التحميل لأكثر من 5 ثوانٍ، تفتح الصفحة تلقائياً
-    const timeout = setTimeout(() => {
-      setLoading(false);
-    }, 5000);
+    // Emergency timeout
+    const timeout = setTimeout(() => setLoading(false), 5000);
 
     return () => {
       unsub();
       clearTimeout(timeout);
+      window.removeEventListener("unhandledrejection", handleRejection);
     };
-  }, []);
+  }, [student?.uid]); // Re-run if student ID changes (e.g. login)
 
   if (loading) return <LoadingScreen />;
 
