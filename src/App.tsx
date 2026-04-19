@@ -31,6 +31,7 @@ interface CompetitionData {
   winnerSection?: string;
   winnerPhotoUrl?: string; // New: Honoring Photo
   note?: string;
+  createdAt?: string; // Required for sorting
 }
 
 interface StudentProfile {
@@ -372,11 +373,17 @@ function StudentInterface({ student, isAdmin }: { student: StudentProfile, isAdm
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, "competitions"), where("status", "!=", "idle"));
-    const unsub = onSnapshot(q, (snapshot) => {
+    // Fetch all competitions to find the most recent one
+    const unsub = onSnapshot(collection(db, "competitions"), (snapshot) => {
       if (!snapshot.empty) {
-        const docData = snapshot.docs[0];
-        setCompetition({ id: docData.id, ...docData.data() } as CompetitionData);
+        const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CompetitionData));
+        // Sort by createdAt (latest first)
+        const sorted = docs.sort((a, b) => {
+          const timeA = new Date(a.createdAt || 0).getTime();
+          const timeB = new Date(b.createdAt || 0).getTime();
+          return timeB - timeA;
+        });
+        setCompetition(sorted[0]);
       } else {
         setCompetition(null);
       }
@@ -1267,10 +1274,16 @@ function AdminView({ userProfile }: { userProfile?: StudentProfile }) {
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "competitions"), (snapshot) => {
       if (!snapshot.empty) {
-        // Get the most recent active or finished comp
         const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CompetitionData));
-        const current = docs.sort((a, b) => new Date(b.endTime || 0).getTime() - new Date(a.endTime || 0).getTime())[0];
-        setCompetition(current);
+        // Sort by createdAt descending
+        const sorted = docs.sort((a, b) => {
+          const timeA = new Date(a.createdAt || 0).getTime();
+          const timeB = new Date(b.createdAt || 0).getTime();
+          return timeB - timeA;
+        });
+        setCompetition(sorted[0]);
+      } else {
+        setCompetition(null);
       }
     });
 
@@ -1342,6 +1355,7 @@ function AdminView({ userProfile }: { userProfile?: StudentProfile }) {
       
     } catch (err) {
       console.error(err);
+      alert("خطأ في حفظ المسابقة: " + (err instanceof Error ? err.message : "يرجى التحقق من الصلاحيات"));
     } finally {
       setLoading(false);
     }
