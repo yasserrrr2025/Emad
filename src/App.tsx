@@ -273,7 +273,7 @@ function LoginPage({ onLogin }: { onLogin: (p: StudentProfile) => void }) {
   );
 }
 
-function StudentInterface({ student }: { student: StudentProfile }) {
+function StudentInterface({ student, isAdmin }: { student: StudentProfile, isAdmin?: boolean }) {
   const [activeTab, setActiveTab] = useState<"live" | "honor" | "hall">("live");
   const [competition, setCompetition] = useState<CompetitionData | null>(null);
   const [answer, setAnswer] = useState("");
@@ -443,11 +443,15 @@ function StudentInterface({ student }: { student: StudentProfile }) {
     );
   };
 
+  if (isAdmin) {
+    return <AdminView />;
+  }
+
   if (!competition) {
     return (
       <div className="min-h-screen flex flex-col p-5 gap-4">
-        <header className="h-20 flex flex-row-reverse justify-between items-center bg-[rgba(20,20,35,0.8)] border border-neon-cyan/20 rounded-xl px-8 shadow-2xl">
-          <div className="flex flex-row-reverse items-center gap-4">
+        <header className="h-20 flex justify-between items-center bg-[rgba(20,20,35,0.8)] border border-neon-cyan/20 rounded-xl px-8 shadow-2xl" dir="rtl">
+          <div className="flex items-center gap-4">
             <img 
               src={LOGO_URL} 
               alt="Logo" 
@@ -457,11 +461,11 @@ function StudentInterface({ student }: { student: StudentProfile }) {
             <div className="text-right">
               <div className="font-bold text-base">{student.name}</div>
               <div className="text-[12px] opacity-60">
-                {student.grade} - فصل: {student.section} | الهوية: {student.nationalId}
+                {student.grade} - فصل: {student.section}
               </div>
             </div>
           </div>
-          <div className="flex flex-row-reverse items-center gap-5">
+          <div className="flex items-center gap-5">
             <span className="text-sm opacity-80">الحالة: متصل</span>
             <span className="bg-green-500/20 text-green-500 text-[11px] font-bold px-3 py-1 rounded">بث مباشر</span>
           </div>
@@ -479,8 +483,8 @@ function StudentInterface({ student }: { student: StudentProfile }) {
   return (
     <div className="min-h-screen flex flex-col p-5 gap-4">
       {/* Header / Top Nav */}
-      <header className="h-20 flex flex-row-reverse justify-between items-center bg-[rgba(20,20,35,0.8)] border border-neon-cyan/20 rounded-xl px-8 shadow-2xl">
-        <div className="flex flex-row-reverse items-center gap-4">
+      <header className="h-20 flex justify-between items-center bg-[rgba(20,20,35,0.8)] border border-neon-cyan/20 rounded-xl px-8 shadow-2xl" dir="rtl">
+        <div className="flex items-center gap-4">
           <img 
             src={LOGO_URL} 
             alt="Logo" 
@@ -490,15 +494,15 @@ function StudentInterface({ student }: { student: StudentProfile }) {
           <div className="text-right">
             <div className="font-bold text-base">{student.name}</div>
             <div className="text-[12px] opacity-60">
-              {student.grade} - فصل: {student.section} | الهوية: {student.nationalId}
+              {student.grade} - فصل: {student.section}
             </div>
           </div>
         </div>
 
         {(competition.prizeImageUrl || competition.title) && (
-          <div className="hidden md:flex flex-row-reverse items-center gap-4 bg-accent-gold/10 px-5 py-2 rounded-[50px] border border-accent-gold max-w-[40%]">
+          <div className="hidden md:flex items-center gap-4 bg-accent-gold/10 px-5 py-2 rounded-[50px] border border-accent-gold max-w-[40%]">
             <Trophy className="w-6 h-6 text-accent-gold flex-shrink-0" />
-            <div className="flex flex-row-reverse items-center gap-2 overflow-hidden">
+            <div className="flex items-center gap-2 overflow-hidden">
               {competition.prizeImageUrl && (
                 <img 
                   src={competition.prizeImageUrl} 
@@ -512,12 +516,12 @@ function StudentInterface({ student }: { student: StudentProfile }) {
           </div>
         )}
 
-        <div className="flex flex-row-reverse items-center gap-5">
+        <div className="flex items-center gap-5">
           <div className="flex flex-col items-end">
             <span className="text-[10px] text-white/40 uppercase tracking-wider">الحالة</span>
-            <span className="text-green-500 text-xs font-bold flex items-center gap-1 flex-row-reverse">
-              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-green-500 text-xs font-bold flex items-center gap-1">
               متصل الآن
+              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
             </span>
           </div>
           
@@ -966,7 +970,7 @@ function StudentInterface({ student }: { student: StudentProfile }) {
   );
 }
 
-function AdminView() {
+function AdminView({ userProfile }: { userProfile?: StudentProfile }) {
   const [competition, setCompetition] = useState<CompetitionData | null>(null);
   const [stats, setStats] = useState({ totalAnswers: 0, correctAnswers: 0 });
   const [loading, setLoading] = useState(false);
@@ -1209,9 +1213,11 @@ function AdminView() {
           <div className="p-3 bg-neon-cyan/10 rounded-2xl border border-neon-cyan/20">
             <LayoutDashboard className="w-8 h-8 text-neon-cyan" />
           </div>
-          <div>
-            <h1 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter">لوحة التحكم الاحترافية</h1>
-            <p className="text-white/40 text-sm">أهلاً بك في نظام إدارة المسابقات التعليمية</p>
+          <div className="text-right">
+            <h1 className="text-2xl md:text-3xl font-black text-white leading-tight">
+              {userProfile ? userProfile.name : "لوحة التحكم"}
+            </h1>
+            <p className="text-neon-cyan text-sm font-bold mt-1">● مدير المسابقة</p>
           </div>
         </div>
 
@@ -1584,18 +1590,40 @@ export default function App() {
 
     const unsub = onAuthStateChanged(auth, async (user) => {
       let isAdm = false;
-      if (user) {
-        isAdm = await checkAdmin(user.uid);
-      }
-      
-      if (!isAdm && manualId) {
-        isAdm = await checkAdmin(manualId);
+      try {
+        if (user) {
+          isAdm = await checkAdmin(user.uid);
+          // Sync student data if auth user exists but no local student
+          if (!student) {
+            const sDoc = await getDoc(doc(db, "students", user.uid));
+            if (sDoc.exists()) {
+              const sData = sDoc.data() as StudentProfile;
+              setStudent(sData);
+              localStorage.setItem("eduwin_student", JSON.stringify(sData));
+            }
+          }
+        }
+        
+        if (!isAdm && manualId) {
+          isAdm = await checkAdmin(manualId);
+        }
+      } catch (err) {
+        console.warn("Auth check error, proceeding as student:", err);
       }
       
       setIsAdmin(isAdm);
       setLoading(false);
     });
-    return () => unsub();
+
+    // صمام أمان: إذا تأخر التحميل لأكثر من 5 ثوانٍ، تفتح الصفحة تلقائياً
+    const timeout = setTimeout(() => {
+      setLoading(false);
+    }, 5000);
+
+    return () => {
+      unsub();
+      clearTimeout(timeout);
+    };
   }, []);
 
   if (loading) return <LoadingScreen />;
@@ -1603,20 +1631,11 @@ export default function App() {
   return (
     <Router>
       <div className="min-h-screen bg-dark-bg selection:bg-neon-cyan selection:text-dark-bg">
-        {isAdmin && (
-          <div className="fixed top-4 left-4 z-[60]">
-            <a 
-              href="/admin" 
-              className="flex items-center gap-2 px-4 py-2 bg-neon-purple text-white rounded-full font-bold shadow-[0_0_15px_rgba(188,19,254,0.4)] hover:scale-105 transition-all text-sm"
-            >
-              <LayoutDashboard className="w-4 h-4" />
-              لوحة التحكم
-            </a>
-          </div>
-        )}
         <Routes>
           <Route path="/" element={
-            !student ? <LoginPage onLogin={setStudent} /> : <StudentInterface student={student} />
+            !student ? <LoginPage onLogin={setStudent} /> : (
+              isAdmin ? <AdminView userProfile={student} /> : <StudentInterface student={student} />
+            )
           } />
           <Route path="/admin" element={<AdminView />} />
         </Routes>

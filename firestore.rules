@@ -86,7 +86,7 @@ service cloud.firestore {
 
     // --- Admin Whitelist ---
     match /admins/{adminId} {
-      allow read: if isSignedIn();
+      allow read: if true; // Allowed so the app can verify admin status locally or via auth
       allow write: if false; // Only manageable via Firebase Console or special script
     }
   }
